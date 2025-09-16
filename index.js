@@ -3,6 +3,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken')
 const app = express();
 require('dotenv').config();
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const port = process.env.PORT || 4000;
 
 
@@ -33,6 +34,7 @@ async function run() {
     const menuCollection = client.db("bistroDb").collection("menu");
     const reviewCollection = client.db("bistroDb").collection("reviews");
     const cartCollection = client.db("bistroDb").collection("carts");
+    const paymentCollection = client.db("bistroDb").collection("payments");
 
     //jwt related api
     app.post('/jwt', async (req, res) => {
@@ -232,6 +234,46 @@ async function run() {
       const query = { _id: new ObjectId(id) }
       const result = await cartCollection.deleteOne(query);
       res.send(result)
+    })
+
+    //Payment Intent
+    app.post('/create-payment-intent', async(req,res)=>{
+      const {price} = req.body;
+      const amount = parseInt(price*100);
+      console.log(amount, 'amount inside the intent');
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: 'usd',
+        payment_method_types: ['card']
+      });
+
+      res.send({
+        clientSecret: paymentIntent.client_secret
+      })
+      
+    })
+    app.get('/payments/:email',verifyToken, async(req,res)=>{
+      const query = {email: req.params.email};
+      if(req.params.email !== req.decoded.email){
+        return res.status(403).send({message: 'forbidden access'})
+      }
+      const result = await paymentCollection.find(query).toArray();
+      res.send(result);
+    })
+
+    //payment related api
+    app.post('/payments', async(req,res)=>{
+      const payment = req.body;
+      const paymentResult = await paymentCollection.insertOne(payment);
+
+      //carefully delete each item from cart
+      console.log('payment info', payment);
+      const quary = {_id: {
+        $in: payment.cartIds.map(id => new ObjectId(id))
+      }};
+      const deleteResult = await cartCollection.deleteMany(quary);
+      res.send(paymentResult, deleteResult);
     })
 
     // Send a ping to confirm a successful connection

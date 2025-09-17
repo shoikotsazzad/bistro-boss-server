@@ -273,6 +273,9 @@ async function run() {
         $in: payment.cartIds.map(id => new ObjectId(id))
       }};
       const deleteResult = await cartCollection.deleteMany(quary);
+
+      //send email
+
       res.send(paymentResult, deleteResult);
     })
     //stats or analytics
